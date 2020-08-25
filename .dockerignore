@@ -5,3 +5,4 @@ docker*.yml
 .editorconfig
 .git
 .env.*
+commitlint.config.js
