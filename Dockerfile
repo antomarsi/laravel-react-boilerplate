@@ -1,58 +1,69 @@
-FROM php:7.2-fpm
+FROM php:7.2-fpm-alpine
 
-# Copy composer.lock and composer.json
-COPY . /var/www
+# Tip from https://github.com/docker-library/php/issues/57#issuecomment-318056930
+# and https://github.com/docker-library/php/issues/279#issuecomment-236441847
+RUN set -xe \
+    && apk add --update icu \
+    && apk add --no-cache --virtual .php-deps make \
+    && apk add --no-cache --virtual .build-deps \
+        zlib-dev \
+        icu-dev \
+        g++ \
+        imagemagick-dev \
+        libtool \
+        make \
+    && docker-php-ext-install zip \
+    && docker-php-ext-install mysqli \
+    && docker-php-ext-install tokenizer \
+    && docker-php-ext-install opcache \
+    && docker-php-ext-install pdo \
+    && docker-php-ext-install pdo_mysql \
+    && docker-php-ext-configure intl \
+    && docker-php-ext-install intl \
+    && docker-php-ext-enable intl \
+    && { find /usr/local/lib -type f -print0 | xargs -0r strip --strip-all -p 2>/dev/null || true; } \
+    && apk del .build-deps \
+    && rm -rf /tmp/* /usr/local/lib/php/doc/* /var/cache/apk/*
+# Image optimisations
+# apt-get install -y --force-yes jpegoptim optipng pngquant gifsicle
 
-# Set working directory
+# https://github.com/docker-library/php/issues/412#issuecomment-297180591
+RUN apk add --no-cache $PHPIZE_DEPS \
+    && pecl install -o -f redis \
+    && pecl install xdebug \
+    && docker-php-ext-enable xdebug \
+    && rm -rf /tmp/pear \
+    && docker-php-ext-enable redis
+
+RUN apk add --no-cache libpng-dev \
+    && docker-php-ext-install gd
+
+# https://medium.com/@takuma.seno/install-php-extensions-on-docker-87a7b1b2531b
+RUN pecl install mailparse \
+    && docker-php-ext-enable mailparse
+
+# https://stackoverflow.com/a/47673183/687274
+RUN apk add --no-cache libmcrypt-dev \
+    && yes | pecl install -o -f mcrypt-1.0.1 \
+    && docker-php-ext-enable mcrypt
+
+COPY ./docker/php/laravel.ini  /usr/local/etc/php/conf.d
+COPY ./docker/php/xlaravel.pool.conf /usr/local/etc/php-fpm.d/
+COPY ./docker/php/php72.ini /usr/local/etc/php/php.ini
+COPY ./docker/php/xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+RUN apk --update add curl nodejs nodejs-npm yarn \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer global require hirak/prestissimo
+
+USER root
+
+# Tip from https://github.com/chrootLogin/docker-nextcloud/issues/3#issuecomment-271626117
+RUN echo http://dl-2.alpinelinux.org/alpine/edge/community/ >> /etc/apk/repositories
+RUN apk --no-cache add shadow \
+    && usermod -u 1000 www-data
+
 WORKDIR /var/www
 
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gnupg && \
-    curl -sL https://deb.nodesource.com/setup_12.x | bash - && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends nodejs && \
-    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list && \
-    apt-get update && \
-    apt-get install -y \
-    build-essential \
-    libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    locales \
-    zip \
-    jpegoptim optipng pngquant gifsicle \
-    vim \
-    unzip \
-    git \
-    curl \
-    yarn && \
-    npm install -g npm
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install extensions
-RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl
-RUN docker-php-ext-configure gd --with-gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ --with-png-dir=/usr/include/
-RUN docker-php-ext-install gd
-
-# Install composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-
-# Add user for laravel application
-RUN groupadd -g 1000 www
-RUN useradd -u 1000 -ms /bin/bash -g www www
-
-# Copy existing application directory permissions
-COPY --chown=www:www . /var/www
-
-RUN composer global require hirak/prestissimo
-
-# Change current user to www
-USER www
-
-# Expose port 9000 and start php-fpm server
 EXPOSE 9000
-CMD ["php-fpm"]
+

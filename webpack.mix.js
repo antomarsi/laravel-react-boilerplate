@@ -1,4 +1,4 @@
-const mix = require('laravel-mix');
+const mix = require("laravel-mix");
 
 /*
  |--------------------------------------------------------------------------
@@ -11,5 +11,20 @@ const mix = require('laravel-mix');
  |
  */
 
-mix.react('resources/js/app.js', 'public/js')
-    .sass('resources/sass/app.scss', 'public/css');
+require("laravel-mix-react-typescript-extension");
+const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
+
+mix.reactTypeScript("resources/ts/index.tsx", "public/js").sass(
+    "resources/sass/app.scss",
+    "public/css"
+);
+
+if (mix.inProduction()) {
+    mix.version();
+} else {
+    mix.webpackConfig(webpack => ({
+        plugins: [
+            mix.inProduction() && new ReactRefreshWebpackPlugin(),
+        ]
+    }));
+}

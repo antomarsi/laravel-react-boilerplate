@@ -8,7 +8,7 @@ down:
 	$(DOCKER) down
 
 bash:
-	$(DOCKER_APP_EXEC) bash
+	$(DOCKER_APP_EXEC) ash
 
 compose-install:
 	$(DOCKER_APP_EXEC) composer install
